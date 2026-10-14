@@ -1018,46 +1018,81 @@ class Window(TemplateMixin, QMainWindow):
         if msgs:self._send(canonical_display(msgs[-1].get('phone',''), self.settings['country_code']),self.reply.toPlainText(),clear=self.reply)
 
     def send_compose(self):
-        self._send(self.recipient.text().strip(),self.compose.toPlainText(),clear=self.compose)
+        self._send(self.recipient.toPlainText(), self.compose.toPlainText(),
+                   clear=self.compose, multiple=True)
 
-    def _send(self,phone,text,clear):
-        if self._sending:return
-        text=text.strip()
-        destination=dialing_number(phone, self.settings['country_code'])
-        if not destination:
-            return self._show_error('Enter a valid recipient. Contact names and alphanumeric SMS sender IDs cannot receive replies.')
-        phone=destination
-        if not text:return self._show_error('Write a message first.')
-        try:gateway=self._gateway()
-        except (GatewayError,ValueError) as exc:return self._show_error(str(exc))
-        sim=self.sim  # Snapshot selected SIM: never infer or override from conversation.
-        confirmation=QMessageBox.question(self,'Confirm SMS',f'Send to {phone} via SIM {sim}?\n\n{text[:550]}',
-                            QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)
-        if confirmation != QMessageBox.StandardButton.Yes:return
-        self._sending=True;self.compose_button.setEnabled(False);self.reply_send.setEnabled(False)
-        self._record_diag(f'Sending request to {phone} using SIM {sim}')
+    def _send(self, phone, text, clear, multiple=False):
+        if self._sending:
+            return
+        text = text.strip()
+        try:
+            numbers = (parse_recipients(phone, self.settings['country_code']) if multiple
+                       else [dialing_number(phone, self.settings['country_code'])])
+            if not numbers or not all(numbers):
+                raise ValueError('Enter a valid telephone number.')
+        except ValueError as exc:
+            return self._show_error(str(exc))
+        if not text:
+            return self._show_error('Write a message first.')
+        try:
+            gateway = self._gateway()
+        except (GatewayError, ValueError) as exc:
+            return self._show_error(str(exc))
+        sim = self.sim  # Never infer the SIM from message history.
+        destination_list = '\n'.join(numbers)
+        confirmation = QMessageBox.question(
+            self, 'Confirm SMS',
+            f'Send this message to {len(numbers)} recipient(s) via SIM {sim}?\n\n'
+            f'{destination_list}\n\nMessage:\n{text[:550]}\n\n'
+            'SMSGate may charge for every recipient and SMS segment. '
+            'API acceptance does not confirm delivery.',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if confirmation != QMessageBox.StandardButton.Yes:
+            return
+
+        self._sending = True
+        self.compose_button.setEnabled(False)
+        self.reply_send.setEnabled(False)
+        self._record_diag(f'Sending request to {len(numbers)} recipient(s) with SIM {sim}')
 
         def done(response):
-            self._sending=False;self.compose_button.setEnabled(True);self.reply_send.setEnabled(True)
-            rid=response.get('id') if isinstance(response,dict) else None
-            new={'id':str(rid or 'local-'+datetime.now().isoformat()),
-                 'date':datetime.now().astimezone().isoformat(timespec='seconds'),
-                 'phone':phone,'text':text,'sim':sim,'state':'Queued (accepted by API)',
-                 'direction':'outgoing'}
-            self.cache['local_sent']=merge_items(self.cache['local_sent'],[new],country_code=self.settings['country_code'])
-            try:json_save(self.cache_path,self.cache)
-            except OSError:LOG.exception('Could not persist queued outgoing message')
-            clear.clear();self._current_signature=None;self._refresh_view()
-            self._record_diag(f'SMS accepted for {phone}; delivery not yet confirmed')
-            QMessageBox.information(self,'Request accepted',f'SMSGate accepted the send request via SIM {sim}.\nThis is not a delivery confirmation.')
-            QTimer.singleShot(1100,self.sync)
+            self._sending = False
+            self.compose_button.setEnabled(True)
+            self.reply_send.setEnabled(True)
+            rid = response.get('id') if isinstance(response, dict) else None
+            timestamp = datetime.now().astimezone().isoformat(timespec='seconds')
+            base_id = str(rid or 'local-' + timestamp)
+            queued = [{'id': base_id, 'date': timestamp, 'phone': number, 'text': text,
+                       'sim': sim, 'state': 'Queued (accepted by API)', 'direction': 'outgoing'}
+                      for number in numbers]
+            self.cache['local_sent'] = merge_items(
+                self.cache['local_sent'], queued, country_code=self.settings['country_code'])
+            try:
+                json_save(self.cache_path, self.cache)
+            except OSError:
+                LOG.exception('Could not persist queued outgoing messages')
+            clear.clear()
+            if multiple:
+                self.recipient.clear()
+            self._current_signature = None
+            self._refresh_view()
+            self._record_diag(f'SMS request accepted for {len(numbers)} recipient(s)')
+            QMessageBox.information(
+                self, 'Request accepted',
+                f'SMSGate accepted the request for {len(numbers)} recipient(s) via SIM {sim}.\n'
+                'Delivery has not been confirmed. Check the sent archive for updates.')
+            QTimer.singleShot(1100, self.sync)
 
         def failed(err):
-            self._sending=False;self.compose_button.setEnabled(True);self.reply_send.setEnabled(True)
-            self._record_diag('Send request failed or timed out')
+            self._sending = False
+            self.compose_button.setEnabled(True)
+            self.reply_send.setEnabled(True)
+            self._record_diag('SMS request failed or timed out; do not retry automatically')
             self._show_error(err)
 
-        self._run(lambda:gateway.send(phone,text,sim),done,failed)
+        # Exactly one HTTP POST for this recipient batch. No automatic retry.
+        self._run(lambda: gateway.send_many(numbers, text, sim), done, failed)
 
     def open_logs(self):
         # QDesktopServices instead of shell or subprocess.
