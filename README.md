@@ -36,6 +36,18 @@ Original creator: **Aidin Shadnezhad**.
 
 **Limitations:** The app shows messages provided by your SMSGate Android server; it is not a general Android SMS-sync client. SMS from other Android messaging apps may not be listed. Outgoing entries without SIM metadata are marked **SIM unknown**. Only local or private IP addresses (or `localhost`) are accepted for connections, and there is no cloud relay.
 
+## Screenshots
+
+Screenshots are captured from the **real PySide6 desktop UI**, with **synthetic demo phone numbers and messages**, not a live SMS account.
+
+**Conversations — SMS inbox, threaded replies and SIM selection**
+
+![SMSGate Desk Community showing conversations with synthetic demo messages](docs/screenshots/conversations.png)
+
+**Settings — server connection, SIM, notifications and appearance**
+
+![SMSGate Desk Community Windows settings screen with sample configuration](docs/screenshots/settings.png)
+
 ## Requirements
 
 - Windows 10/11 (64-bit recommended).
