@@ -1,4 +1,14 @@
+<div align="center">
+  <img src="assets/SMSGateDesk.png" alt="SMSGate Desk Community logo" width="116" />
+</div>
+
 # SMSGate Desk Community
+
+**Manage SMS from your Android gateway on your Windows PC.**
+
+[**Download Windows beta v1.0.0-beta.1 (ZIP)**](https://github.com/aidin594/SMSGate-Desktop/releases/tag/v1.0.0-beta.1) · [Browse source](https://github.com/aidin594/SMSGate-Desktop) · [Report a bug](https://github.com/aidin594/SMSGate-Desktop/issues/new/choose)
+
+
 
 **A community-maintained, open-source Windows desktop client for an Android SMSGate server.**
 
@@ -8,6 +18,10 @@
 > **Status: public beta (`1.0.0-beta.1`).** Windows CI runs 68 unit tests, an offscreen GUI smoke test, a packaged EXE build, and a disposable Windows Credential Manager round-trip test from the EXE. These automated checks passed on GitHub-hosted Windows. Full end-to-end testing with real Android gateways, varied Windows installations and antivirus products is still needed before calling this a stable release.
 
 Original creator: **Aidin Shadnezhad**.
+
+## Download for Windows
+
+**No Python installation required.** Download [**v1.0.0-beta.1**](https://github.com/aidin594/SMSGate-Desktop/releases/tag/v1.0.0-beta.1), extract the `SMSGateDeskCommunity_Windows_v1.0.0-beta.1.zip` archive, then launch `SMSGateDeskCommunity.exe` **inside its extracted folder**. Keep the `_internal` folder next to the EXE. The first release is unsigned and marked **beta**; verify the source and checksum before running it.
 
 ## What it can do
 
