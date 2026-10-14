@@ -35,8 +35,15 @@ jobs:
       - name: Verify packaged Windows credential self-test
         shell: pwsh
         run: |
-          & .\dist\SMSGateDeskCommunity\SMSGateDeskCommunity.exe --credential-self-test
-          $code = $LASTEXITCODE
+          # PowerShell does not reliably wait for a Windows GUI-subsystem EXE
+          # invoked via '&': $LASTEXITCODE can be $null even when it starts.
+          $exe = Join-Path $PWD 'dist\SMSGateDeskCommunity\SMSGateDeskCommunity.exe'
+          $process = Start-Process -FilePath $exe -ArgumentList '--credential-self-test' -PassThru
+          if (-not $process.WaitForExit(30000)) {
+            $process.Kill()
+            throw 'Packaged credential self-test timed out after 30 seconds'
+          }
+          $code = $process.ExitCode
           if ($code -ne 0) {
             Write-Host "Packaged Windows credential self-test failed with exit code $code"
             $logDirectory = Join-Path $env:LOCALAPPDATA 'SMSGateDeskCommunity'
