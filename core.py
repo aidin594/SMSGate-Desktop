@@ -125,6 +125,56 @@ def normalized_sim(value):
     return int(str(value)) if str(value) in ('1','2') else None
 
 
+MAX_RECIPIENTS = 20
+MAX_TEMPLATES = 100
+
+
+def parse_recipients(raw: str, country_code: str = '', max_recipients: int = MAX_RECIPIENTS) -> list[str]:
+    """Validate comma, semicolon or newline-separated numbers before sending."""
+    parts = [part.strip() for part in re.split(r'[,;\r\n]+', str(raw or '')) if part.strip()]
+    if not parts:
+        raise ValueError('Enter at least one recipient.')
+    result, seen = [], set()
+    for part in parts:
+        number = dialing_number(part, country_code)
+        if not number:
+            raise ValueError(f'Invalid recipient: {part[:45]}. Use telephone numbers, not contact names.')
+        identity = canonical_phone(number, country_code)
+        if identity not in seen:
+            result.append(number)
+            seen.add(identity)
+        if len(result) > max_recipients:
+            raise ValueError(f'Maximum {max_recipients} unique recipients per message.')
+    return result
+
+
+def validate_template(name: str, text: str) -> tuple[str, str]:
+    name, text = str(name).strip(), str(text).strip()
+    if not name or len(name) > 80 or any(ch in name for ch in '\r\n'):
+        raise ValueError('Template name must be 1–80 characters on one line.')
+    if not text or len(text) > 2000:
+        raise ValueError('Template message must be 1–2000 characters.')
+    return name, text
+
+
+def load_templates(path: Path) -> dict[str, str]:
+    """Read templates from separate local JSON; ignore malformed entries."""
+    raw = json_load(path, {})
+    cleaned = {}
+    for name, body in raw.items():
+        if not isinstance(name, str) or not isinstance(body, str):
+            continue
+        try:
+            name, body = validate_template(name, body)
+        except ValueError:
+            continue
+        if name.casefold() not in {key.casefold() for key in cleaned}:
+            cleaned[name] = body
+        if len(cleaned) >= MAX_TEMPLATES:
+            break
+    return cleaned
+
+
 def message_visible(msg, sim: int, include_unknown: bool = False) -> bool:
     slot = normalized_sim(msg.get('sim'))
     return slot == sim or (include_unknown and slot is None)
@@ -367,16 +417,23 @@ class Gateway:
         return result
 
     def send(self, number: str, text: str, sim: int):
-        if not re.fullmatch(r'\+?\d{6,16}',number):
-            raise GatewayError('Recipient must be 6-16 digits, optionally beginning with +.')
+        """Backward-compatible single-recipient send."""
+        return self.send_many([number], text, sim)
+
+    def send_many(self, numbers: list[str], text: str, sim: int):
+        """One SMSGate POST for all unique recipients; no automatic retries."""
+        if not numbers or len(numbers) > MAX_RECIPIENTS or len(set(numbers)) != len(numbers):
+            raise GatewayError(f'Choose 1–{MAX_RECIPIENTS} distinct recipients.')
+        if any(not re.fullmatch(r'\+?\d{6,16}', number) for number in numbers):
+            raise GatewayError('Each recipient must be 6–16 digits, optionally beginning with +.')
         if not text.strip():
             raise GatewayError('Message cannot be empty.')
-        if sim not in (1,2):
+        if sim not in (1, 2):
             raise GatewayError('Select SIM1 or SIM2 in Settings.')
-        payload = {'phoneNumbers':[number], 'textMessage':{'text':text},
-                   'withDeliveryReport':True, 'simNumber':sim}
+        payload = {'phoneNumbers': list(numbers), 'textMessage': {'text': text},
+                   'withDeliveryReport': True, 'simNumber': sim}
         try:
-            # IMPORTANT: never automatically retry POST; timeout may follow accepted send.
-            return self.request('POST','/messages',json=payload)
+            # IMPORTANT: do not retry a POST that may have been accepted.
+            return self.request('POST', '/messages', json=payload)
         except GatewayError as exc:
-            raise GatewayError(str(exc) + ' Do not retry before checking for a queued message.') from exc
+            raise GatewayError(str(exc) + ' Do not retry before checking for queued messages.') from exc
