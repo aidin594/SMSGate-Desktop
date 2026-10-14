@@ -12,6 +12,7 @@ permissions:
 jobs:
   capture:
     runs-on: windows-latest
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,5 +50,7 @@ jobs:
           git add docs/screenshots/conversations.png docs/screenshots/settings.png
           git commit -m 'Add authentic synthetic-data UI screenshots'
           if ($LASTEXITCODE -ne 0) { throw 'Unable to commit screenshots' }
+          git pull --rebase origin main
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to rebase screenshots on latest main' }
           git push origin HEAD:main
           if ($LASTEXITCODE -ne 0) { throw 'Unable to push screenshots' }
