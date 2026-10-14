@@ -3,9 +3,9 @@
 **A community-maintained, open-source Windows desktop client for an Android SMSGate server.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Windows CI](https://img.shields.io/badge/Windows%20CI-pending-lightgrey)](.github/workflows/windows.yml)
+[![Windows CI](https://github.com/aidin594/SMSGate-Desktop/actions/workflows/windows.yml/badge.svg)](https://github.com/aidin594/SMSGate-Desktop/actions/workflows/windows.yml)
 
-> **Status: public beta source preview (`1.0.0-beta.1`).** This source has passed automated Python tests in Linux. The Windows GUI smoke test, Windows credential integration and packaged executable have **not yet been verified on an actual Windows PC**. Do not consider this a stable release until the Windows checks pass.
+> **Status: public beta (`1.0.0-beta.1`).** Windows CI runs 68 unit tests, an offscreen GUI smoke test, a packaged EXE build, and a disposable Windows Credential Manager round-trip test from the EXE. These automated checks passed on GitHub-hosted Windows. Full end-to-end testing with real Android gateways, varied Windows installations and antivirus products is still needed before calling this a stable release.
 
 Original creator: **Aidin Shadnezhad**.
 
@@ -29,6 +29,12 @@ Original creator: **Aidin Shadnezhad**.
 - Both devices on an accessible private network.
 - Gateway address, username and password obtained **from your own SMSGate installation**.
 - For building from source: Python 3.12 or 3.13, and internet access to download Python dependencies.
+
+## Prebuilt Windows beta (GitHub Actions)
+
+1. Open the [latest successful Windows CI run](https://github.com/aidin594/SMSGate-Desktop/actions/workflows/windows.yml).
+2. Under **Artifacts**, download **SMSGateDeskCommunity-Windows-beta** (GitHub sign-in may be required). Artifacts are temporary, currently retained for 14 days; this is not a GitHub Release.
+3. Extract the ZIP, keep **all files in the extracted folder**, and run **SMSGateDeskCommunity.exe**. This is an unsigned community beta, so Windows may show a security warning; verify the repository and build before running software.
 
 ## Quick start: run source on Windows
 
