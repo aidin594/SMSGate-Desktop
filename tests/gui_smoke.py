@@ -3,7 +3,7 @@ import os
 import sys
 import tempfile
 
-os.environ['QT_QPA_PLATFORM']='offscreen'
+os.environ['QT_QPA_PLATFORM'] = 'windows' if os.environ.get('SMSGATE_SCREENSHOT_DIR') else 'offscreen'
 tmp=tempfile.TemporaryDirectory(prefix='smsgate-smoke-')
 os.environ['LOCALAPPDATA']=tmp.name
 sys.path.insert(0,os.path.dirname(os.path.dirname(__file__)))
