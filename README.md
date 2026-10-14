@@ -23,6 +23,17 @@ Original creator: **Aidin Shadnezhad**.
 
 **No Python installation required.** Download [**v1.0.0-beta.1**](https://github.com/aidin594/SMSGate-Desktop/releases/tag/v1.0.0-beta.1), extract the `SMSGateDeskCommunity_Windows_v1.0.0-beta.1.zip` archive, then launch `SMSGateDeskCommunity.exe` **inside its extracted folder**. Keep the `_internal` folder next to the EXE. The first release is unsigned and marked **beta**; verify the source and checksum before running it.
 
+## New in development: SMS templates and multiple recipients
+
+The development branch adds optional saved SMS templates and a multi-recipient composer:
+
+1. Open **New message** and separate recipient numbers with commas, semicolons or new lines.
+2. A maximum of **20 unique telephone numbers** per submission is allowed. The program validates every number and removes duplicates (including matching local/international formats when a dialing country is set). If any number is invalid, nothing is sent.
+3. Write your message, then click **Save new** to name and store a template. Choose a template to reuse it, **Update** to save edits, or **Delete** to remove it. Templates are saved only in the Windows user's \`SMSGateDeskCommunity/templates.json\`; no phone numbers or credentials are stored as part of a template.
+4. Click **Review and send**, read the recipient list and selected SIM, then explicitly confirm. The gateway receives **one** API request with all recipients, not separate automatic retries. Acceptance does not guarantee delivery. Your SMS provider may charge per recipient and message segment.
+
+**Safety:** No scheduled, automatic or unconfirmed bulk sending. Send only to recipients who expect your messages and follow applicable anti-spam and privacy rules. This feature is under review and not in the published \`v1.0.0-beta.1\` release.
+
 ## What it can do
 
 - View incoming and outgoing SMS as conversations (SMSGate API).
