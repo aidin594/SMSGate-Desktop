@@ -1,0 +1,77 @@
+name: Publish Windows beta release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/release-requests/v1.0.0-beta.1.md'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-v1.0.0-beta.1
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run Windows tests
+        run: |
+          python -m unittest discover -s tests -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Unit tests failed' }
+          python tests/gui_smoke.py
+          if ($LASTEXITCODE -ne 0) { throw 'GUI smoke test failed' }
+
+      - name: Build desktop app for Windows
+        run: >-
+          python -m PyInstaller --clean --noconfirm --onedir --windowed
+          --name SMSGateDeskCommunity
+          --icon "assets\SMSGateDesk.ico"
+          --add-data "assets\SMSGateDesk.ico;assets"
+          --add-data "assets\SMSGateDesk.png;assets"
+          app.py
+
+      - name: Test packaged Windows Credential Manager integration
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'dist\SMSGateDeskCommunity\SMSGateDeskCommunity.exe'
+          $process = Start-Process -FilePath $exe -ArgumentList '--credential-self-test' -PassThru
+          if (-not $process.WaitForExit(30000)) {
+            $process.Kill()
+            throw 'Credential self-test timed out after 30 seconds'
+          }
+          if ($process.ExitCode -ne 0) {
+            throw "Packaged credential self-test failed (exit: $($process.ExitCode))"
+          }
+
+      - name: Package full folder and third-party notices
+        shell: pwsh
+        run: |
+          Copy-Item LICENSE,THIRD_PARTY_NOTICES.md,DISTRIBUTION_CHECKLIST.md -Destination 'dist\SMSGateDeskCommunity'
+          Copy-Item LICENSES -Destination 'dist\SMSGateDeskCommunity' -Recurse
+          Compress-Archive -Path 'dist\SMSGateDeskCommunity' -DestinationPath 'SMSGateDeskCommunity_Windows_v1.0.0-beta.1.zip' -CompressionLevel Optimal
+          $hash = (Get-FileHash 'SMSGateDeskCommunity_Windows_v1.0.0-beta.1.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  SMSGateDeskCommunity_Windows_v1.0.0-beta.1.zip" | Set-Content -Encoding utf8 'SHA256SUMS.txt'
+          if (-not (Test-Path 'SMSGateDeskCommunity_Windows_v1.0.0-beta.1.zip')) { throw 'ZIP was not created' }
+
+      - name: Publish one prerelease and upload ZIP
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'v1.0.0-beta.1'
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists; refusing to replace public assets" }
+          gh release create $tag 'SMSGateDeskCommunity_Windows_v1.0.0-beta.1.zip' 'SHA256SUMS.txt' --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'SMSGate Desk Community v1.0.0-beta.1' --notes-file 'RELEASE_NOTES.md' --prerelease
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub prerelease publish failed' }
