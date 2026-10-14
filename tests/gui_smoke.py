@@ -179,10 +179,13 @@ if screenshot_dir:
     window.country_code.setText('1')
     window.selected_sim.setCurrentIndex(0)
     window.remember.setChecked(False)
-    window.secret.clear()
     window.url.setText('http://192.168.1.10:8080')
     window.username.setText('demo')
+    # Changing the account requires a new password; the mock value is never
+    # saved, used for real networking or displayed in screenshots.
+    window.secret.setText('synthetic-screenshot-password')
     window.save_settings()
+    window.secret.clear()
     window.cache['inbox'] = [
         {'id':'demo-in-1','phone':'+12025550101','date':'2026-10-12T09:20:00+02:00',
          'sim':1,'text':'Hi! Is my bicycle ready?','direction':'incoming','state':'SMS'},
