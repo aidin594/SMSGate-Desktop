@@ -202,6 +202,9 @@ if screenshot_dir:
     })
     window.cache['local_sent'] = []
     window._current_signature = None
+    # Show the multi-message 555-0101 demo conversation rather than the
+    # most recent one-message thread in the public screenshot.
+    window.active_key = '12025550101'
     window._refresh_view()
     window._show_page(0)
     window.resize(1280, 800)
@@ -210,6 +213,7 @@ if screenshot_dir:
     assert window.grab().save(str(target / 'conversations.png')), 'Conversations screenshot failed'
     window._show_page(5)
     window.resize(1280, 850)
+    window.settings_scroll.verticalScrollBar().setValue(0)
     app.processEvents()
     assert window.grab().save(str(target / 'settings.png')), 'Settings screenshot failed'
     print('Captured authentic Qt screenshots with synthetic numbers; no gateway used.')
