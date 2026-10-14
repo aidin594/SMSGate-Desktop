@@ -36,7 +36,20 @@ jobs:
         shell: pwsh
         run: |
           & .\dist\SMSGateDeskCommunity\SMSGateDeskCommunity.exe --credential-self-test
-          if ($LASTEXITCODE -ne 0) { throw 'Packaged credential self-test failed' }
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Write-Host "Packaged Windows credential self-test failed with exit code $code"
+            $logDirectory = Join-Path $env:LOCALAPPDATA 'SMSGateDeskCommunity'
+            foreach ($name in @('smsgate.log','fatal-python.log')) {
+              $logPath = Join-Path $logDirectory $name
+              if (Test-Path $logPath) {
+                Write-Host "Last 40 lines of $name (disposable CI test account):"
+                Get-Content $logPath -Tail 40
+              }
+              else { Write-Host "No $name produced" }
+            }
+            throw 'Packaged credential self-test failed'
+          }
       - name: Include licensing and replaceable binary notices
         shell: pwsh
         run: |
