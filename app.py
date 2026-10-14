@@ -29,6 +29,7 @@ from core import (
     validate_template, MAX_RECIPIENTS, MAX_TEMPLATES,
 )
 
+from template_ui import TemplateMixin
 from notification_utils import IncomingNotificationTracker, alert_content
 from startup_utils import (StartupError, registered_command, registration_hint,
                            set_startup, restore_startup, startup_command, BACKGROUND_FLAG)
@@ -210,7 +211,7 @@ class Bubble(QFrame):
         v.addWidget(meta)
 
 
-class Window(QMainWindow):
+class Window(TemplateMixin, QMainWindow):
     def __init__(self):
         super().__init__()
         self.settings_path = BASE/'settings.json'
@@ -356,18 +357,54 @@ class Window(QMainWindow):
         self._table_rows=[]
 
     def _build_compose(self):
-        v=self.page('New message','Send using the single SIM selected in Settings. No automatic sending.')
-        card=QFrame(objectName='card');cv=QVBoxLayout(card);cv.setContentsMargins(22,22,22,22);cv.setSpacing(12)
-        self.compose_sim_info=QLabel('');cv.addWidget(self.compose_sim_info)
-        cv.addWidget(QLabel('Recipient'))
-        self.recipient=QLineEdit();self.recipient.setPlaceholderText('+46701234567');cv.addWidget(self.recipient)
-        cv.addWidget(QLabel('Message'))
-        self.compose=QPlainTextEdit();self.compose.setPlaceholderText('Your message…');self.compose.setMinimumHeight(180);cv.addWidget(self.compose)
-        self.char_count=QLabel('0 characters');self.char_count.setObjectName('secondary');cv.addWidget(self.char_count)
-        self.compose.textChanged.connect(lambda:self.char_count.setText(f'{len(self.compose.toPlainText())} characters'))
-        self.compose_button=QPushButton('Send message  ↗',objectName='primary');self.compose_button.clicked.connect(self.send_compose)
+        v = self.page('New message', 'Send to up to 20 recipients via the SIM selected in Settings. No automatic sending.')
+        card = QFrame(objectName='card')
+        cv = QVBoxLayout(card)
+        cv.setContentsMargins(22, 22, 22, 22)
+        cv.setSpacing(10)
+        self.compose_sim_info = QLabel('')
+        cv.addWidget(self.compose_sim_info)
+        cv.addWidget(QLabel('Recipients — separate telephone numbers with commas, semicolons or new lines'))
+        self.recipient = QPlainTextEdit()
+        self.recipient.setPlaceholderText('+46701234567, +46707654321')
+        self.recipient.setFixedHeight(72)
+        cv.addWidget(self.recipient)
+        self.recipient_count = QLabel('No recipients yet (max 20)', objectName='secondary')
+        cv.addWidget(self.recipient_count)
+        self.recipient.textChanged.connect(self._update_recipient_count)
+
+        cv.addWidget(QLabel('Saved SMS templates'))
+        tools = QHBoxLayout()
+        self.template_picker = QComboBox()
+        self.template_picker.setMinimumWidth(170)
+        tools.addWidget(self.template_picker, 1)
+        self.template_save = QPushButton('Save new')
+        self.template_save.clicked.connect(self._save_new_template)
+        tools.addWidget(self.template_save)
+        self.template_update = QPushButton('Update')
+        self.template_update.clicked.connect(self._update_template)
+        tools.addWidget(self.template_update)
+        self.template_delete = QPushButton('Delete')
+        self.template_delete.clicked.connect(self._delete_template)
+        tools.addWidget(self.template_delete)
+        cv.addLayout(tools)
+
+        cv.addWidget(QLabel('Message — select a template or type your own'))
+        self.compose = QPlainTextEdit()
+        self.compose.setPlaceholderText('Your message…')
+        self.compose.setMinimumHeight(145)
+        cv.addWidget(self.compose)
+        self.char_count = QLabel('0 characters', objectName='secondary')
+        cv.addWidget(self.char_count)
+        self.compose.textChanged.connect(
+            lambda: self.char_count.setText(f'{len(self.compose.toPlainText())} characters'))
+        self.template_picker.currentIndexChanged.connect(self._apply_template)
+        self._refresh_template_picker()
+        self.compose_button = QPushButton('Review and send  ↗', objectName='primary')
+        self.compose_button.clicked.connect(self.send_compose)
         cv.addWidget(self.compose_button)
-        v.addWidget(card);v.addStretch()
+        v.addWidget(card)
+        v.addStretch()
 
     def _build_overview(self):
         v=self.page('Overview','Local gateway health and saved-message summary.')
