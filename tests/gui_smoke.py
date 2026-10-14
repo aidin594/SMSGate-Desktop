@@ -132,6 +132,55 @@ with mock_patch.object(window, '_show_notification', return_value=True) as alert
        {'id':'notice-2','createdAt':'2026-10-08T13:01:00+02:00', 'sender':'+46702222222','simNumber':2,'contentPreview':'Correct SIM'}], 'sent':None,'errors':{}})
     assert alert_mock.call_count == 1, 'Repeated sync cannot double-notify'
 
+# SMS templates and multiple destinations: mock all sends and confirmation.
+# No real outbound SMS, server traffic or Windows credential mutations.
+from PySide6.QtWidgets import QMessageBox
+from unittest.mock import Mock
+window._show_page(2)
+window.compose.setPlainText('Din cykel är klar för hämtning.')
+with patch.object(app_module.QInputDialog, 'getText', return_value=('Bike pickup', True)):
+    window._save_new_template()
+assert window.templates['Bike pickup'] == 'Din cykel är klar för hämtning.'
+assert window.template_picker.currentText() == 'Bike pickup'
+window.compose.clear()
+window.template_picker.setCurrentIndex(0)
+window.template_picker.setCurrentText('Bike pickup')
+assert 'Din cykel' in window.compose.toPlainText()
+window.compose.setPlainText('Cykeln kan hämtas idag.')
+with patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Yes):
+    window._update_template()
+assert window.templates['Bike pickup'] == 'Cykeln kan hämtas idag.'
+assert window.templates_path.exists()
+
+# One international number repeated in local format is one recipient.
+window.recipient.setPlainText('0702222222, +46702222222;\n+46703333333')
+assert '2 unique recipient' in window.recipient_count.text()
+fake_gateway = Mock()
+fake_gateway.send_many.return_value = {'id': 'batch-test-1'}
+def run_without_network(task, success, fail):
+    success(task())
+with patch.object(window, '_gateway', return_value=fake_gateway), \
+     patch.object(window, '_run', side_effect=run_without_network), \
+     patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Yes), \
+     patch.object(QMessageBox, 'information'):
+    window.send_compose()
+fake_gateway.send_many.assert_called_once_with(
+    ['+46702222222', '+46703333333'], 'Cykeln kan hämtas idag.', 2)
+assert len([x for x in window.cache['local_sent'] if x['id'] == 'batch-test-1']) == 2
+assert window.recipient.toPlainText() == ''
+assert window.compose.toPlainText() == ''
+# Invalid one of many: no send, preserve fields, show validation error.
+window.recipient.setPlainText('+46702222222, wrong-name')
+window.compose.setPlainText('Do not send')
+with patch.object(window, '_show_error') as display_error:
+    window.send_compose()
+    display_error.assert_called_once()
+fake_gateway.send_many.assert_called_once()
+# Delete requires explicit approval, and affects only local templates.
+with patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Yes):
+    window._delete_template()
+assert 'Bike pickup' not in window.templates
+
 # Regression: the Settings page must not clip controls on a compact monitor.
 # Check both minimum-sized and wide windows, using the real Qt layout engine.
 from PySide6.QtCore import QPoint
