@@ -166,6 +166,51 @@ for width, height in ((900, 630), (1040, 680), (1440, 900)):
     app.processEvents()
     assert button.isVisible(), 'Save button should remain visible after scrolling'
 
+# Optional authentic, privacy-safe UI screenshots for GitHub documentation.
+# Uses this actual PySide6 window with synthetic 555-01xx demonstration numbers.
+screenshot_dir = os.environ.get('SMSGATE_SCREENSHOT_DIR')
+if screenshot_dir:
+    from pathlib import Path
+    from core import normalize_sent
+    target = Path(screenshot_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    window.search.clear()
+    window.search_delay.stop()
+    window.country_code.setText('1')
+    window.selected_sim.setCurrentIndex(0)
+    window.remember.setChecked(False)
+    window.secret.clear()
+    window.url.setText('http://192.168.1.10:8080')
+    window.username.setText('demo')
+    window.save_settings()
+    window.cache['inbox'] = [
+        {'id':'demo-in-1','phone':'+12025550101','date':'2026-10-12T09:20:00+02:00',
+         'sim':1,'text':'Hi! Is my bicycle ready?','direction':'incoming','state':'SMS'},
+        {'id':'demo-in-2','phone':'+12025550101','date':'2026-10-12T09:25:00+02:00',
+         'sim':1,'text':'Thanks, see you soon!','direction':'incoming','state':'SMS'},
+        {'id':'demo-in-3','phone':'+12025550102','date':'2026-10-12T10:30:00+02:00',
+         'sim':1,'text':'Can I book a service for Friday?','direction':'incoming','state':'SMS'},
+    ]
+    window.cache['sent'] = normalize_sent({
+        'id':'demo-out-1','state':'Delivered',
+        'recipients':[{'phoneNumber':'+12025550101'}],
+        'textMessage':{'text':'Your bicycle is ready for pickup.'},
+        'states':{'Sent':'2026-10-12T09:22:00+02:00'}
+    })
+    window.cache['local_sent'] = []
+    window._current_signature = None
+    window._refresh_view()
+    window._show_page(0)
+    window.resize(1280, 800)
+    window.show()
+    app.processEvents()
+    assert window.grab().save(str(target / 'conversations.png')), 'Conversations screenshot failed'
+    window._show_page(5)
+    window.resize(1280, 850)
+    app.processEvents()
+    assert window.grab().save(str(target / 'settings.png')), 'Settings screenshot failed'
+    print('Captured authentic Qt screenshots with synthetic numbers; no gateway used.')
+
 # Changes made to Settings do not turn into sends, and no POST is issued in this smoke test.
 window._closing=True
 window.close()
