@@ -16,7 +16,7 @@ from PySide6.QtCore import Qt, QSize, QRect, QTimer, QThreadPool, QRunnable, QOb
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPalette, QIcon
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QFileDialog, QFrame, QFormLayout,
-    QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
+    QHBoxLayout, QLabel, QLineEdit, QInputDialog, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QSplitter, QStackedWidget,
     QStyledItemDelegate, QStyle, QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView,
     QVBoxLayout, QWidget, QSpinBox, QAbstractItemView, QSystemTrayIcon, QMenu,
@@ -25,14 +25,15 @@ from PySide6.QtWidgets import (
 from core import (
     Gateway, GatewayError, app_dir, all_messages, group_conversations, canonical_phone, canonical_display, dialing_number, iso_date,
     json_save, load_cache, load_settings, merge_items, normalize_inbox,
-    normalize_sent, normalized_sim, validate_url,
+    normalize_sent, normalized_sim, validate_url, parse_recipients, load_templates,
+    validate_template, MAX_RECIPIENTS, MAX_TEMPLATES,
 )
 
 from notification_utils import IncomingNotificationTracker, alert_content
 from startup_utils import (StartupError, registered_command, registration_hint,
                            set_startup, restore_startup, startup_command, BACKGROUND_FLAG)
 
-APP_VERSION = '1.0.0-beta.1'
+APP_VERSION = '1.1.0-dev'
 APP_NAME = 'SMSGate Desk Community'
 BASE = app_dir()
 BASE.mkdir(parents=True, exist_ok=True)
@@ -214,6 +215,8 @@ class Window(QMainWindow):
         super().__init__()
         self.settings_path = BASE/'settings.json'
         self.cache_path = BASE/'messages.json'
+        self.templates_path = BASE/'templates.json'
+        self.templates = load_templates(self.templates_path)
         self.settings = load_settings(self.settings_path)
         self.cache = load_cache(self.cache_path)
         self.password = ''
