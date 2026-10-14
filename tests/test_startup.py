@@ -1,4 +1,5 @@
 """Tests use a simulated HKCU registry: never touch the user's real startup apps."""
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -88,7 +89,12 @@ class StartupTests(unittest.TestCase):
             app = Path(folder) / 'SMSGate Desk.exe'
             app.touch()
             command = su.startup_command(str(app), frozen=True)
-            self.assertIn(f'"{app}" --background', command)
+            # Windows can expand an 8.3 short temp path (RUNNER~1) to its
+            # long form (runneradmin) when Path.resolve() is called.
+            # Validate the canonical executable and correct quoting instead.
+            expected = subprocess.list2cmdline([str(app.resolve()), su.BACKGROUND_FLAG])
+            self.assertEqual(command, expected)
+            self.assertTrue(command.startswith('"'), 'EXE path with spaces must be quoted')
             self.assertIn('Enabled for this EXE', su.registration_hint(command, executable=str(app), frozen=True))
             self.assertIn('different copy', su.registration_hint('"C:\\old.exe" --background', executable=str(app), frozen=True))
 
