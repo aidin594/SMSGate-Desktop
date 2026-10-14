@@ -1,0 +1,51 @@
+name: Windows tests and beta build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - name: Install requirements
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+      - name: Test domain logic, persistence and mocked Windows registry
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Test GUI offscreen using mocked network, credentials and registry
+        run: python tests/gui_smoke.py
+      - name: Build isolated community folder
+        run: >-
+          python -m PyInstaller --clean --noconfirm --onedir --windowed
+          --name SMSGateDeskCommunity
+          --icon "assets\SMSGateDesk.ico"
+          --add-data "assets\SMSGateDesk.ico;assets"
+          --add-data "assets\SMSGateDesk.png;assets"
+          app.py
+      - name: Verify packaged Windows credential self-test
+        shell: pwsh
+        run: |
+          & .\dist\SMSGateDeskCommunity\SMSGateDeskCommunity.exe --credential-self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged credential self-test failed' }
+      - name: Include licensing and replaceable binary notices
+        shell: pwsh
+        run: |
+          Copy-Item LICENSE,THIRD_PARTY_NOTICES.md,DISTRIBUTION_CHECKLIST.md -Destination dist\SMSGateDeskCommunity
+          Copy-Item LICENSES -Destination dist\SMSGateDeskCommunity -Recurse
+      - name: Upload beta build artifact (NOT a GitHub Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SMSGateDeskCommunity-Windows-beta
+          path: dist/SMSGateDeskCommunity/
+          if-no-files-found: error
+          retention-days: 14
