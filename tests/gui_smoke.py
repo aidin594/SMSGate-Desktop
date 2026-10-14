@@ -1,0 +1,182 @@
+"""Run on Windows after installing PySide6: python tests/gui_smoke.py"""
+import os
+import sys
+import tempfile
+
+os.environ['QT_QPA_PLATFORM']='offscreen'
+tmp=tempfile.TemporaryDirectory(prefix='smsgate-smoke-')
+os.environ['LOCALAPPDATA']=tmp.name
+sys.path.insert(0,os.path.dirname(os.path.dirname(__file__)))
+
+from PySide6.QtWidgets import QApplication
+import app as app_module
+from app import Window
+from unittest.mock import patch
+
+# Never read, write or delete the user's REAL Windows credentials during QA.
+_fake_credentials = {}
+read_patch = patch.object(app_module, 'read_password', side_effect=lambda url: _fake_credentials.get(url))
+write_patch = patch.object(app_module, 'save_password', side_effect=lambda url, pwd: _fake_credentials.__setitem__(url, pwd))
+delete_patch = patch.object(app_module, 'delete_password', side_effect=lambda url: _fake_credentials.pop(url, None))
+sync_patch = patch.object(Window, 'sync', lambda self: None)  # No network traffic in GUI QA.
+# Never touch the REAL HKCU\...\Run key during smoke tests.
+_fake_startup = {'command': None}
+startup_read = patch.object(app_module, 'registered_command', side_effect=lambda: _fake_startup['command'])
+startup_write = patch.object(app_module, 'set_startup', side_effect=lambda enabled, command=None:
+                             _fake_startup.__setitem__('command', command if enabled else None))
+startup_restore = patch.object(app_module, 'restore_startup', side_effect=lambda command:
+                               _fake_startup.__setitem__('command', command))
+startup_cmd = patch.object(app_module, 'startup_command', return_value='"C:\\SMSGateDeskCommunity.exe" --background')
+for patched in (read_patch, write_patch, delete_patch, sync_patch, startup_read, startup_write, startup_restore, startup_cmd):
+    patched.start()
+
+app=QApplication([])
+app.setStyle('Fusion')
+window=Window()
+window.sync_timer.stop()
+window.url.setText('http://192.168.1.10:8080')
+window.username.setText('sms')
+window.secret.setText('GUI-test-only-secret')
+window.country_code.setText('46')
+assert not window.windowIcon().isNull(), 'App icon should load in source build'
+# No app.exec(): do not start the deferred automatic network sync.
+window.cache['inbox']=[
+ {'id':'a','phone':'+46701111111','date':'2026-10-08T11:00:00+02:00','sim':1,'text':'Hej SIM1','direction':'incoming','state':'SMS'},
+ {'id':'b','phone':'+46702222222','date':'2026-10-08T12:00:00+02:00','sim':2,'text':'سلام SIM2','direction':'incoming','state':'SMS'},
+]
+window._refresh_view()
+assert window.list.count()==1
+assert window.active_key=='46701111111'
+window.selected_sim.setCurrentIndex(1)
+window.theme_select.setCurrentText('Light')
+window.save_settings()
+assert window.settings['country_code']=='46'
+assert window.sim==2
+assert window.settings['theme']=='light'
+assert window.list.count()==1
+assert window.active_key=='46702222222'
+assert 'SIM 2' in window.compose_sim_info.text()
+# Mixed-format incoming/outgoing phone variants are one conversation.
+window.cache['inbox'].append({'id':'c','phone':'070 222 22 22','date':'2026-10-08T12:01:00+02:00','sim':2,'text':'Hej igen','direction':'incoming','state':'SMS'})
+window._refresh_view()
+assert window.list.count()==1, 'Phone variants must not create duplicate conversations'
+assert len(window.conversation_data['46702222222'])==2
+window.search.setText('0046702222222')
+window.search_delay.stop()
+window._refresh_view()
+assert window.list.count()==1, 'Search must find the conversation by equivalent international format'
+
+# Regression: SMSGate /messages usually has no SIM, so outgoing must not vanish.
+from core import normalize_sent
+window.cache['sent']=normalize_sent({
+    'id':'historical-sent','state':'Delivered','recipients':[{'phoneNumber':'0702222222'}],
+    'textMessage':{'text':'Outgoing from gateway with no SIM'},
+    'states':{'Sent':'2026-10-08T12:02:00+02:00'}
+})
+window._refresh_view()
+assert window.list.count()==1, 'Unknown-SIM outgoing must attach to the same selected-SIM conversation'
+thread=window.conversation_data['46702222222']
+assert len(thread)==3, thread
+assert any(m['direction']=='outgoing' and m['sim'] is None for m in thread), 'Must not invent SIM for gateway outgoing'
+assert window.table.rowCount()==1, 'Sent archive must show unknown-SIM outgoing'
+assert 'unknown' in window.table.item(0,4).text().lower()
+# Disable the outgoing exception in Settings, while incoming SIM selection remains strict.
+window.unassigned_sent.setChecked(False)
+window.save_settings()
+assert len(window.conversation_data['46702222222'])==2
+assert window.table.rowCount()==0
+window.unassigned_sent.setChecked(True)
+window.save_settings()
+assert len(window.conversation_data['46702222222'])==3
+assert window.table.rowCount()==1
+
+# Native notifications: simulated only, never contact SMSGate or send SMS.
+window.notify_toggle.setChecked(True)
+window.notify_preview.setChecked(False)
+window.close_to_tray.setChecked(True)
+window.save_settings()
+assert window.settings['desktop_notifications'] is True
+assert window.settings['notification_preview'] is False
+assert window.settings['close_to_tray'] is True
+
+# Auto-start: registry simulated, without touching any actual Windows login settings.
+window.start_with_windows.setChecked(True)
+window.save_settings()
+assert window.settings['start_with_windows'] is True
+assert _fake_startup['command'] is not None and '--background' in _fake_startup['command']
+window.start_with_windows.setChecked(False)
+window.save_settings()
+assert window.settings['start_with_windows'] is False
+assert _fake_startup['command'] is None
+
+# Password storage: explicit opt-in, tracked as persisted, without touching WinCred.
+window.secret.setText('GUI-test-only-secret')
+window.remember.setChecked(True)
+window.save_settings()
+assert _fake_credentials.get(window.settings['url']) == 'GUI-test-only-secret'
+assert window.settings['remember_password'] is True
+assert window.secret.text() == ''
+assert 'Saved in Windows Credential Manager' in window.password_status.text()
+
+# Arrival notifications: baseline is quiet; selected SIM alerts only once.
+window._notification_tracker.ingest([],window.sim)
+window._sync_complete({'health':{'status':'pass','version':'test'},'inbox':[], 'sent':None,'errors':{}})
+from unittest.mock import patch as mock_patch
+with mock_patch.object(window, '_show_notification', return_value=True) as alert_mock:
+    window._sync_complete({'health':{'status':'pass'},'inbox':[
+       {'id':'notice-1','createdAt':'2026-10-08T13:00:00+02:00', 'sender':'+46701111111','simNumber':1,'contentPreview':'Different SIM'},
+       {'id':'notice-2','createdAt':'2026-10-08T13:01:00+02:00', 'sender':'+46702222222','simNumber':2,'contentPreview':'Correct SIM'}], 'sent':None,'errors':{}})
+    assert alert_mock.call_count == 1, 'Only selected SIM must notify'
+    window._sync_complete({'health':{'status':'pass'},'inbox':[
+       {'id':'notice-1','createdAt':'2026-10-08T13:00:00+02:00', 'sender':'+46701111111','simNumber':1,'contentPreview':'Different SIM'},
+       {'id':'notice-2','createdAt':'2026-10-08T13:01:00+02:00', 'sender':'+46702222222','simNumber':2,'contentPreview':'Correct SIM'}], 'sent':None,'errors':{}})
+    assert alert_mock.call_count == 1, 'Repeated sync cannot double-notify'
+
+# Regression: the Settings page must not clip controls on a compact monitor.
+# Check both minimum-sized and wide windows, using the real Qt layout engine.
+from PySide6.QtCore import QPoint
+window._show_page(5)
+window.show()
+for width, height in ((900, 630), (1040, 680), (1440, 900)):
+    window.resize(width, height)
+    app.processEvents()
+    assert window.width() <= width + 2, f"Qt forced a wider window at {width}x{height}: {window.width()}"
+    area = window.settings_scroll
+    viewport = area.viewport()
+    page = window.settings_content
+    assert area.horizontalScrollBar().maximum() == 0, f'Horizontal scrolling at {width}x{height}'
+    assert page.width() <= viewport.width() + 2, f'Settings exceed viewport at {width}x{height}'
+    assert viewport.width() >= 300, f'Settings viewport too narrow at {width}x{height}'
+    # Text inputs and selects must fit inside their own card, no clipped right edge.
+    for widget in (window.url, window.username, window.secret, window.selected_sim,
+                   window.theme_select, window.interval):
+        position = widget.mapTo(page, QPoint(0, 0))
+        assert position.x() >= 0, f'{widget.objectName()} starts offscreen'
+        assert position.x() + widget.width() <= page.width() + 2, \
+            f'{widget.__class__.__name__} extends beyond Settings width at {width}x{height}'
+    # Save must always be visible, regardless of scroll position.
+    button = window.settings_save_button
+    saved_pos = button.mapTo(window.stack, QPoint(0, 0))
+    assert button.isVisible(), f'Save settings hidden at {width}x{height}'
+    assert saved_pos.y() + button.height() <= window.stack.height() + 2, \
+        f'Save settings clipped below window at {width}x{height}'
+    assert saved_pos.x() + button.width() <= window.stack.width() + 2, \
+        f'Save settings clipped horizontally at {width}x{height}'
+    area.verticalScrollBar().setValue(area.verticalScrollBar().maximum())
+    app.processEvents()
+    assert button.isVisible(), 'Save button should remain visible after scrolling'
+
+# Changes made to Settings do not turn into sends, and no POST is issued in this smoke test.
+window._closing=True
+window.close()
+app.processEvents()
+import faulthandler
+from app import CRASH_STREAM
+faulthandler.disable()
+CRASH_STREAM.close()
+import logging
+logging.shutdown()  # Release log handles before Windows removes test directory.
+tmp.cleanup()
+for patched in (startup_cmd, startup_restore, startup_write, startup_read, sync_patch, delete_patch, write_patch, read_patch):
+    patched.stop()
+print('GUI smoke PASS: auto-start toggle, SIM isolation, theme, outgoing messages, Settings responsiveness')
