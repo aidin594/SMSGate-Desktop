@@ -1,0 +1,41 @@
+# Python and test state
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+*.egg-info/
+
+# Build artifacts
+build/
+dist/
+*.spec
+*.exe
+*.msi
+*.zip
+
+# Private app state / sensitive data
+settings.json
+messages.json
+messages.json.*
+smsgate.log*
+fatal-python.log*
+*.log
+*.csv
+*.db
+*.sqlite*
+*.pem
+*.pfx
+*.key
+.env
+.env.*
+credentials*.json
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
