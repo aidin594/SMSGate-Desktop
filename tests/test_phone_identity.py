@@ -62,6 +62,34 @@ class PhoneIdentityTests(unittest.TestCase):
         self.assertEqual({x['direction'] for x in threads['46701234567']}, {'incoming', 'outgoing'})
         self.assertEqual(group_conversations(all_messages(cache, 1, country_code='46'), country_code='46'), {})
 
+    def test_global_contextual_grouping_without_country_setting(self):
+        cases = [
+            ('0712345678', '+44712345678'),
+            ('09121234567', '+989121234567'),
+            ('0412345678', '+61412345678'),
+            ('0701234567', '+46701234567'),
+        ]
+        for local, international in cases:
+            with self.subTest(local=local):
+                messages = [
+                    {'phone': local, 'direction': 'outgoing', 'text': 'Hi'},
+                    {'phone': international, 'direction': 'incoming', 'text': 'Reply'},
+                ]
+                grouped = group_conversations(messages)
+                self.assertEqual(len(grouped), 1)
+                self.assertEqual(len(next(iter(grouped.values()))), 2)
+
+    def test_ambiguous_international_suffix_stays_separate(self):
+        messages = [{'phone': number} for number in (
+            '0712345678', '+44712345678', '+46712345678')]
+        grouped = group_conversations(messages)
+        self.assertEqual(len(grouped), 3)
+
+    def test_distinct_explicit_country_codes_never_merge(self):
+        grouped = group_conversations([
+            {'phone': '+44712345678'}, {'phone': '0046712345678'}])
+        self.assertEqual(len(grouped), 2)
+
     def test_duplicate_sent_message_id_across_formatted_numbers(self):
         old = [{'id': 'same-id', 'phone': '+46701234567', 'sim': 1,
                 'direction': 'outgoing', 'date': '2026-10-08', 'text': 'hej', 'state': 'Queued'}]

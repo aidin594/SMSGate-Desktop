@@ -260,6 +260,34 @@ def group_conversations(messages: list[dict], country_code: str = '') -> dict[st
     Keep SIM filtering separate: call with all_messages(cache, selected_sim)
     to avoid mixing the selected SIM's messages with the other SIM.
     """
+    # Discover explicit international identities from the conversation history.
+    # A national number can be associated with one of them only when its
+    # subscriber-number suffix is unambiguous. Never guess a country code
+    # from a bare national number or merge two explicit international codes.
+    from phone_utils import _number_parts
+    international = set()
+    for item in messages:
+        if not isinstance(item, dict):
+            continue
+        _, digits, explicit = _number_parts(item.get('phone'))
+        if explicit and digits:
+            international.add(canonical_phone(item['phone'], country_code))
+
+    def matching_international(number):
+        _, digits, explicit = _number_parts(number)
+        if not digits or explicit or len(digits) < 8:
+            return None
+        # Leading zero is a national trunk prefix in many (not all)
+        # countries. Try both spellings but only accept one unique match.
+        suffixes = {digits}
+        if digits.startswith('0') and len(digits) >= 9:
+            suffixes.add(digits[1:])
+        matches = {candidate for candidate in international
+                   if any(candidate.endswith(suffix) and
+                          1 <= len(candidate) - len(suffix) <= 3
+                          for suffix in suffixes)}
+        return next(iter(matches)) if len(matches) == 1 else None
+
     groups = {}
     for item in messages:
         if not isinstance(item, dict):
@@ -267,6 +295,9 @@ def group_conversations(messages: list[dict], country_code: str = '') -> dict[st
         number = canonical_phone(item.get('phone'), country_code)
         if not number:
             continue
+        _, _, explicit = _number_parts(item.get('phone'))
+        if not explicit and not country_code:
+            number = matching_international(item.get('phone')) or number
         groups.setdefault(number, []).append(item)
     return groups
 
